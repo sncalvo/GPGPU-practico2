@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include "cuda.h"
 
+#include <locale.h>
+
 #define CUDA_CHK(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -32,6 +34,7 @@ __device__ int modulo(int a, int b){
 __global__ void decrypt_kernel(int *d_message, int length)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
+
 	if (i < length)
 	{
 		d_message[i] = modulo(A_MMI_M * (d_message[i] - B), M);
@@ -69,24 +72,38 @@ int main(int argc, char *argv[])
 	CUDA_CHK(cudaMemcpy(d_message, h_message, size, cudaMemcpyHostToDevice));
 
 	/* Configurar la grilla y lanzar el kernel */
-	dim3 dimBlock(4, 8, 8);
-	dim3 dimGrid(1, 1);
-	decrypt_kernel<<<dimGrid, dimBlock>>>(d_message, length);
+	// dim3 dimBlock(16, 1);
+	// dim3 dimGrid(size / dimBlock.x, size / dimBlock.y);
+	int blockSize = 256;
+	int numBlocks = (size + blockSize - 1) / blockSize;
+
+	decrypt_kernel<<<numBlocks, blockSize>>>(d_message, length);
 
 	cudaDeviceSynchronize();
 
 	/* Copiar los datos de salida a la CPU en h_message */
 	CUDA_CHK(cudaMemcpy(h_message, d_message, size, cudaMemcpyDeviceToHost));
 
+	// setlocale(LC_ALL, "en_US.UTF-8");
 	// despliego el mensaje
+	// FILE *res_file = fopen("test.txt", "w");
+	// fwrite(h_message, sizeof(int), length, res_file);
 	for (int i = 0; i < length; i++) {
+		// if (h_message[i] < 32 || h_message[i] > 126) {
+		// 	fprintf(res_file, "%c", (short)h_message[i]);
+		// } else {
+		// 	fprintf(res_file, "%c", (char)h_message[i]);
+		// }
+		// fwprintf(res_file, L"%c", (char)h_message[i]);
 		printf("%c", (char)h_message[i]);
 	}
 	printf("\n");
+	// fwprintf(res_file, L"\n");
 
 	// libero la memoria en la GPU
 	CUDA_CHK(cudaFree(d_message));
 
+	// fclose(res_file);
 	// libero la memoria en la CPU
 	free(h_message);
 
