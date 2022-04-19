@@ -41,6 +41,17 @@ __global__ void decrypt_kernel(int *d_message, int length)
 	}
 }
 
+__global__ void count_occurences(int *d_message, int occurenses[M], int length)
+{
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (i < length)
+	{
+		occurenses[modulo(d_message[i], M)]++;
+		__syncthreads();
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int *h_message;
@@ -79,10 +90,18 @@ int main(int argc, char *argv[])
 
 	decrypt_kernel<<<numBlocks, blockSize>>>(d_message, length);
 
+	int* d_occurenses = (int *)malloc(M * sizeof(int));
+
+	CUDA_CHK(cudaMalloc((void **)&d_occurenses, M * sizeof(int)));
+	CUDA_CHK(cudaMemset(d_occurenses, 0, M * sizeof(int)));
+	count_occurences<<<numBlocks, blockSize>>>(d_message, d_occurenses, length);
+
 	cudaDeviceSynchronize();
 
+	int* h_occurenses = (int *)malloc(M * sizeof(int));
 	/* Copiar los datos de salida a la CPU en h_message */
 	CUDA_CHK(cudaMemcpy(h_message, d_message, size, cudaMemcpyDeviceToHost));
+	CUDA_CHK(cudaMemcpy(h_occurenses, d_occurenses, M * sizeof(int), cudaMemcpyDeviceToHost));
 
 	// setlocale(LC_ALL, "en_US.UTF-8");
 	// despliego el mensaje
@@ -97,7 +116,19 @@ int main(int argc, char *argv[])
 		// fwprintf(res_file, L"%c", (char)h_message[i]);
 		printf("%c", (char)h_message[i]);
 	}
+
 	printf("\n");
+	for (int i = 0; i < M; i++) {
+		// if (h_message[i] < 32 || h_message[i] > 126) {
+		// 	fprintf(res_file, "%c", (short)h_message[i]);
+		// } else {
+		// 	fprintf(res_file, "%c", (char)h_message[i]);
+		// }
+		// fwprintf(res_file, L"%c", (char)h_message[i]);
+		printf("%d: %d\n" , i, h_occurenses[i]);
+	}
+	printf("\n");
+
 	// fwprintf(res_file, L"\n");
 
 	// libero la memoria en la GPU
